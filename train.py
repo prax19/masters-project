@@ -1,4 +1,5 @@
 import os
+import warnings
 
 import torch
 from torch import autocast
@@ -6,13 +7,41 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 
+from mask_generation import generate_segmentation_mask
+
 import pandas as pd
 from tqdm.notebook import tqdm
+import matplotlib.pyplot as plt
+from PIL import Image
+
+def train_test_split(dataset):
+    warnings.warn(
+        "Spliting method like that disturbs validation.",
+        category=DeprecationWarning,
+        stacklevel=2
+    )
+    g = torch.Generator().manual_seed(42)
+    train_size = int(0.7 * len(dataset))
+    test_size = len(dataset) - train_size
+    return random_split(
+        dataset,
+        [train_size, test_size],
+        generator=g
+    ) 
+
+def replace_bn_with_gn(module, num_groups=32):
+    for name, child in module.named_children():
+        if isinstance(child, nn.BatchNorm2d):
+            gn = nn.GroupNorm(num_groups, child.num_features)
+            setattr(module, name, gn)
+        else:
+            replace_bn_with_gn(child, num_groups)
 
 def train_model(
     model,
     ckpt_name,
-    dataset,
+    train_dataset,
+    test_dataset,
     device,
     batch_size = 4,
     num_epochs = 30,
@@ -20,7 +49,7 @@ def train_model(
     weight_decay = 1e-5,
     amp = True
 ):
-    num_classes = len(dataset.class_names)
+    num_classes = len(train_dataset.class_names)
     
     # przygotowywanie plików
     model_root_dir=".\\model\\"
@@ -28,22 +57,12 @@ def train_model(
     meta_path = os.path.join(model_root_dir, ckpt_name + '.csv')
 
     # przygotowanie historii / odczyt z pliku
-    history = pd.DataFrame(columns = ['epoch', 'train_loss', 'val_loss', 'mIoU'] + dataset.class_names)
+    history = pd.DataFrame(columns = ['epoch', 'train_loss', 'val_loss', 'mIoU'] + train_dataset.class_names)
     history.index.name = "id"
     if os.path.exists(meta_path):
         history = pd.read_csv(meta_path, index_col='id')
     
     #  -- wczytywanie zbioru --
-
-    # podział zbioru
-    g = torch.Generator().manual_seed(42)
-    train_size = int(0.7 * len(dataset))
-    test_size = len(dataset) - train_size
-    train_dataset, test_dataset = random_split(
-        dataset,
-        [train_size, test_size],
-        generator=g
-    ) 
 
     # dataloadery
     # parametry dobrane dla systemu z 12gb vram oraz 64gb ram
@@ -69,6 +88,10 @@ def train_model(
 
     # -- 
 
+    # if(batch_size == 1):
+    #     replace_bn_with_gn(model.classifier)
+    #     replace_bn_with_gn(model.aux_classifier)
+
     # przygotowanie modelu oraz warstw wejściowych / wyjściowych
     model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
     model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
@@ -90,7 +113,7 @@ def train_model(
         start_epoch = ckpt['epoch'] + 1
         print(f"Resuming from epoch {start_epoch}")
 
-    # model = torch.compile(model)
+    model = torch.compile(model)
 
     # Pętla treningowa
     for epoch in range(start_epoch, num_epochs + 1):
@@ -162,7 +185,7 @@ def train_model(
             'mIoU':       float(miou)
         }
 
-        for idx, cls_name in enumerate(dataset.class_names):
+        for idx, cls_name in enumerate(train_dataset.class_names):
             val = ious_cpu[idx]
             row[cls_name] = float(val) if not (val != val) else float('nan')
         
@@ -171,7 +194,7 @@ def train_model(
 
         print(f"[Epoch {epoch+1}/{num_epochs}] Val   Loss: {val_loss_epoch:.4f} | mIoU: {miou:.4f}")
         for cls in range(num_classes):
-            classs_name = dataset.class_names[cls] if cls < num_classes else f"Class {cls}"
+            classs_name = train_dataset.class_names[cls] if cls < num_classes else f"Class {cls}"
             if torch.isnan(ious[cls]):
                 print(f"  {classs_name:<30s} IoU: n/a")
             else:
@@ -188,5 +211,17 @@ def train_model(
             'optimizer_state_dict': optimizer.state_dict(),
             'loss': epoch_loss,
         },  ckpt_path)
+
+        # wyświetlanie maski
+        mask = generate_segmentation_mask(
+            model=model,
+            image=Image.open(".\\test\\test2.png").convert("RGB"),
+            palette=train_dataset.PALETTE.items(),
+            device=device
+        )
+        plt.figure()  
+        plt.imshow(mask)
+        plt.axis('off')
+        plt.show()
 
         scheduler.step()

@@ -15,7 +15,6 @@ class A2D2SegmentationDataset(Dataset):
             camera='cam_front_center',
             transforms_geo=None,
             transforms_img=None,
-            with_pointcloud=False,
             with_meta=False
     ):
         self.root_dir = root_dir
@@ -30,7 +29,6 @@ class A2D2SegmentationDataset(Dataset):
             v2.ToTensor(),
             v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        self.with_pointcloud = with_pointcloud
         self.with_meta = with_meta
 
         # wczytywanie mapping HEX->nazwa z JSON i zbuduj PALETTE: (R,G,B)->class_id
@@ -67,12 +65,6 @@ class A2D2SegmentationDataset(Dataset):
                     f"{timestamp}_label_{self.camera_id}_{idx}.png"
                 )
                 sample = {'image': img_path, 'label': label_path}
-                if self.with_pointcloud:
-                    pc_path = os.path.join(
-                        root_dir, scene, 'lidar', camera,
-                        f"{timestamp}_lidar_{self.camera_id}_{idx}.npz"
-                    )
-                    sample['pointcloud'] = pc_path
                 if self.with_meta:
                     json_path = os.path.join(
                         root_dir, scene, 'camera', camera,

@@ -10,30 +10,21 @@ from torchvision.models.segmentation import deeplabv3_resnet50, DeepLabV3_ResNet
 import numpy as np
 from PIL import Image
 
+def replace_bn_with_gn(module, num_groups=32):
+    for name, child in module.named_children():
+        if isinstance(child, nn.BatchNorm2d):
+            gn = nn.GroupNorm(num_groups, child.num_features)
+            setattr(module, name, gn)
+        else:
+            replace_bn_with_gn(child, num_groups)
+
 def generate_segmentation_mask(
-        checkpoint_path, 
-        input_img_path, 
-        dataset,
+        model,
+        image: Image,
+        palette,
         device,
-        model = None,
-        model_arch = deeplabv3_resnet50,
-        weights = DeepLabV3_ResNet50_Weights.DEFAULT,
-
     ):
-    num_classes = len(dataset.class_names)
-
-    if model == None:
-        model = model_arch(weights=weights)
-        model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
-        model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
-        model = model.to(device=device)
     model.eval()
-
-    ckpt = torch.load(checkpoint_path)
-    model.load_state_dict(ckpt['model_state_dict'])
-    epoch = ckpt['epoch']
-
-    image = Image.open(input_img_path).convert("RGB")
     orig_width, orig_height = image.size
 
     transform = T.Compose([
@@ -49,7 +40,7 @@ def generate_segmentation_mask(
         prediction = output.argmax(1).squeeze(0).cpu().numpy()
 
     # Załadowywanie palety (mapa class_id -> RGB)
-    class_id_to_color = {v: k for k, v in dataset.PALETTE.items()}
+    class_id_to_color = {v: k for k, v in palette}
 
     # Kolorowy obraz predykcji
     color_pred = np.zeros((prediction.shape[0], prediction.shape[1], 3), dtype=np.uint8)
@@ -64,11 +55,50 @@ def generate_segmentation_mask(
     
     # z powrotem na numpy [H, W, 3]
     color_pred_interpolated = cp_up.squeeze(0).permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+    return Image.fromarray(color_pred_interpolated)
+
+def generate_segmentation_mask_file(
+        checkpoint_path, 
+        input_img_path, 
+        dataset,
+        device,
+        model = None,
+        model_arch = deeplabv3_resnet50,
+        weights = DeepLabV3_ResNet50_Weights.DEFAULT,
+
+    ):
+    num_classes = len(dataset.class_names)
+
+    if model == None:
+        model = model_arch(weights=weights)
+        model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
+        model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
+
+        # dla batch_size = 1
+        # if(1 == 1):
+        #     replace_bn_with_gn(model.classifier)
+        #     replace_bn_with_gn(model.aux_classifier)
+
+    model = model.to(device=device)
+
+    ckpt = torch.load(checkpoint_path)
+    model.load_state_dict(ckpt['model_state_dict'])
+    epoch = ckpt['epoch']
+
+    image = Image.open(input_img_path).convert("RGB")
+    mask = generate_segmentation_mask(
+        model=model,
+        image=image, 
+        palette=dataset.PALETTE.items(),
+        device=device
+    )
 
     # zapis do pliku
     base, ext = os.path.splitext(input_img_path)
-    new_path = base + "_pred7_ep" + str(epoch) + ext
-    Image.fromarray(color_pred_interpolated).save(new_path)
+    new_path = base + "_pred8_ep" + str(epoch) + ext
+    mask.save(new_path)
+
+    return mask
 
 def generate_segmentation_mask_tiled(
     checkpoint_path: str,
