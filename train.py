@@ -97,6 +97,7 @@ def train_model(
     model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
 
     model = model.to(device=device)
+    model = torch.compile(model)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
@@ -113,26 +114,37 @@ def train_model(
         start_epoch = ckpt['epoch'] + 1
         print(f"Resuming from epoch {start_epoch}")
 
-    model = torch.compile(model)
-
     # Pętla treningowa
     for epoch in range(start_epoch, num_epochs + 1):
         model.train()
         running_loss = 0.0
-        for batch in tqdm(train_loader):
+        
+        pbar = tqdm(train_loader)
+        for batch in pbar:
             images = batch['image'].to(device, non_blocking=True)
             masks  = batch['label'].to(device, non_blocking=True)
 
             optimizer.zero_grad()
             with autocast(device_type='cuda'):
-                outputs = model(images)['out']
-                loss = criterion(outputs, masks)
+                outputs = model(images)
+                main_out = outputs['out']; aux_out = outputs.get('aux', None)
+                loss_main = criterion(main_out, masks)
+                loss = loss_main
+                if aux_out is not None:
+                    loss_aux = criterion(aux_out, masks)
+                    loss += 0.4 * loss_aux
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
 
             running_loss += loss.item() * images.size(0)
+
+            pbar.set_postfix(
+                loss=f"{loss.item():.4f}",
+                avg=f"{running_loss / (pbar.n + 1) / images.size(0):.4f}",  # średnia od początku epoki
+                lr=f"{optimizer.param_groups[0]['lr']:.1e}"
+            )
 
         epoch_loss = running_loss / len(train_loader.dataset)
         print(f"[Epoch {epoch}/{num_epochs}] Train Loss: {epoch_loss:.4f}")
@@ -149,12 +161,17 @@ def train_model(
                 masks  = batch['label'].to(device, non_blocking=True)
 
                 with autocast(device_type='cuda'):
-                    outputs = model(images)['out']
-                    val_loss = criterion(outputs, masks)
+                    outputs = model(images)
+                    main_out = outputs['out']; aux_out = outputs.get('aux', None)
+                    loss_main = criterion(main_out, masks)
+                    val_loss = loss_main
+                    if aux_out is not None:
+                        loss_aux = criterion(aux_out, masks)
+                        val_loss += 0.4 * loss_aux
 
                 running_val_loss += val_loss.item() * images.size(0)
 
-                preds = outputs.argmax(1)
+                preds = main_out.argmax(1)
 
                 pred_flat = preds.view(-1)
                 mask_flat = masks.view(-1)

@@ -80,6 +80,7 @@ def generate_segmentation_mask_file(
         #     replace_bn_with_gn(model.aux_classifier)
 
     model = model.to(device=device)
+    model = torch.compile(model)
 
     ckpt = torch.load(checkpoint_path)
     model.load_state_dict(ckpt['model_state_dict'])
