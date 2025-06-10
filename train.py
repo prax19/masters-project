@@ -14,21 +14,6 @@ from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
 from PIL import Image
 
-def train_test_split(dataset):
-    warnings.warn(
-        "Spliting method like that disturbs validation.",
-        category=DeprecationWarning,
-        stacklevel=2
-    )
-    g = torch.Generator().manual_seed(42)
-    train_size = int(0.7 * len(dataset))
-    test_size = len(dataset) - train_size
-    return random_split(
-        dataset,
-        [train_size, test_size],
-        generator=g
-    ) 
-
 def replace_bn_with_gn(module, num_groups=32):
     for name, child in module.named_children():
         if isinstance(child, nn.BatchNorm2d):
@@ -49,7 +34,8 @@ def train_model(
     weight_decay = 1e-5,
     amp = True
 ):
-    num_classes = len(train_dataset.class_names)
+    class_names = [cls.name for cls in train_dataset.classes]
+    num_classes = len(train_dataset.classes)
     
     # przygotowywanie plików
     model_root_dir=".\\model\\"
@@ -57,7 +43,7 @@ def train_model(
     meta_path = os.path.join(model_root_dir, ckpt_name + '.csv')
 
     # przygotowanie historii / odczyt z pliku
-    history = pd.DataFrame(columns = ['epoch', 'train_loss', 'val_loss', 'mIoU'] + train_dataset.class_names)
+    history = pd.DataFrame(columns = ['epoch', 'train_loss', 'val_loss', 'mIoU'] + class_names)
     history.index.name = "id"
     if os.path.exists(meta_path):
         history = pd.read_csv(meta_path, index_col='id')
@@ -120,9 +106,9 @@ def train_model(
         running_loss = 0.0
         
         pbar = tqdm(train_loader)
-        for batch in pbar:
-            images = batch['image'].to(device, non_blocking=True)
-            masks  = batch['label'].to(device, non_blocking=True)
+        for images, masks in pbar:
+            images = images.to(device, non_blocking=True)
+            masks  = masks.squeeze(1).long().to(device, non_blocking=True)
 
             optimizer.zero_grad()
             with autocast(device_type='cuda'):
@@ -147,7 +133,7 @@ def train_model(
             )
 
         epoch_loss = running_loss / len(train_loader.dataset)
-        print(f"[Epoch {epoch}/{num_epochs}] Train Loss: {epoch_loss:.4f}")
+        print(f"[Epoch {epoch+1}/{num_epochs}] Train Loss: {epoch_loss:.4f}")
 
         # walidacja
         model.eval()
@@ -156,9 +142,9 @@ def train_model(
         conf_matrix = torch.zeros((num_classes, num_classes), dtype=torch.int64, device=device)
 
         with torch.no_grad():
-            for batch in tqdm(test_loader):
-                images = batch['image'].to(device, non_blocking=True)
-                masks  = batch['label'].to(device, non_blocking=True)
+            for images, masks in tqdm(test_loader):
+                images = images.to(device, non_blocking=True)
+                masks  = masks.squeeze(1).long().to(device,  non_blocking=True)
 
                 with autocast(device_type='cuda'):
                     outputs = model(images)
@@ -202,16 +188,16 @@ def train_model(
             'mIoU':       float(miou)
         }
 
-        for idx, cls_name in enumerate(train_dataset.class_names):
+        for idx, cls in enumerate(train_dataset.classes):
             val = ious_cpu[idx]
-            row[cls_name] = float(val) if not (val != val) else float('nan')
+            row[cls.name] = float(val) if not (val != val) else float('nan')
         
         history.loc[len(history)] = row
         history.to_csv(meta_path)
 
         print(f"[Epoch {epoch+1}/{num_epochs}] Val   Loss: {val_loss_epoch:.4f} | mIoU: {miou:.4f}")
         for cls in range(num_classes):
-            classs_name = train_dataset.class_names[cls] if cls < num_classes else f"Class {cls}"
+            classs_name = train_dataset.classes[cls].name if cls < num_classes else f"Class {cls}"
             if torch.isnan(ious[cls]):
                 print(f"  {classs_name:<30s} IoU: n/a")
             else:
@@ -233,7 +219,7 @@ def train_model(
         mask = generate_segmentation_mask(
             model=model,
             image=Image.open(".\\test\\test2.png").convert("RGB"),
-            palette=train_dataset.PALETTE.items(),
+            classes=train_dataset.classes,
             device=device
         )
         plt.figure()  

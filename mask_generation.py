@@ -4,7 +4,8 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as T
+
+import torchvision.transforms.v2 as v2
 from torchvision.models.segmentation import deeplabv3_resnet50, DeepLabV3_ResNet50_Weights
 
 import numpy as np
@@ -21,16 +22,15 @@ def replace_bn_with_gn(module, num_groups=32):
 def generate_segmentation_mask(
         model,
         image: Image,
-        palette,
+        classes,
         device,
     ):
     model.eval()
     orig_width, orig_height = image.size
 
-    transform = T.Compose([
-        # T.Resize((768, 1280)),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    transform = v2.Compose([
+        v2.PILToTensor(),
+        v2.ConvertImageDtype(torch.float32)
     ])
 
     input_tensor = transform(image).unsqueeze(0).to(device)
@@ -40,11 +40,15 @@ def generate_segmentation_mask(
         prediction = output.argmax(1).squeeze(0).cpu().numpy()
 
     # Załadowywanie palety (mapa class_id -> RGB)
-    class_id_to_color = {v: k for k, v in palette}
+    palette = {
+        cls.id: cls.color
+        for cls in classes
+        if getattr(cls, "train_id", 0) != 255
+    }
 
     # Kolorowy obraz predykcji
     color_pred = np.zeros((prediction.shape[0], prediction.shape[1], 3), dtype=np.uint8)
-    for cls_id, rgb in class_id_to_color.items():
+    for cls_id, rgb in palette.items():
         color_pred[prediction == cls_id] = rgb
 
     # Wyjściowa interpolacja
@@ -60,14 +64,14 @@ def generate_segmentation_mask(
 def generate_segmentation_mask_file(
         checkpoint_path, 
         input_img_path, 
-        dataset,
+        classes,
         device,
         model = None,
         model_arch = deeplabv3_resnet50,
         weights = DeepLabV3_ResNet50_Weights.DEFAULT,
 
     ):
-    num_classes = len(dataset.class_names)
+    num_classes = len(classes)
 
     if model == None:
         model = model_arch(weights=weights)
@@ -89,8 +93,8 @@ def generate_segmentation_mask_file(
     image = Image.open(input_img_path).convert("RGB")
     mask = generate_segmentation_mask(
         model=model,
-        image=image, 
-        palette=dataset.PALETTE.items(),
+        image=image,
+        classes=classes,
         device=device
     )
 
@@ -165,10 +169,9 @@ def generate_segmentation_mask_tiled(
     tile_h, tile_w = tile_size
 
     # transformacje kafla
-    tile_transform = T.Compose([
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406],
-                    std=[0.229, 0.224, 0.225])
+    tile_transform = v2.Compose([
+        v2.PILToTensor(),
+        v2.ConvertImageDtype(torch.float32),
     ])
 
     # pusta tablica wyniku
@@ -211,7 +214,7 @@ def generate_segmentation_mask_tiled(
                 if (w_c != tile_w) or (h_c != tile_h):
                     pad_w = tile_w - w_c
                     pad_h = tile_h - h_c
-                    tile  = T.functional.pad(tile, (0, 0, pad_w, pad_h),
+                    tile  = v2.functional.pad(tile, (0, 0, pad_w, pad_h),
                                             padding_mode="edge")
 
                 inp   = tile_transform(tile).unsqueeze(0).to(device)
