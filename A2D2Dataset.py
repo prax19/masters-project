@@ -86,8 +86,10 @@ class A2D2Dataset(Dataset):
             camera='cam_front_center',
             transforms=None
     ):
-        self.root = os.path.join(root, 'camera_lidar_semantic')
-        self.scenes = scenes or sorted(os.listdir(self.root))
+        self.root = root
+        root_semantic = os.path.join(root, 'camera_lidar_semantic')
+
+        self.scenes = scenes or sorted(os.listdir(root_semantic))
         self.camera = camera
         self.camera_id = camera.replace('cam_', '').replace('_', '')
         self.transforms = transforms or v2.PILToTensor()
@@ -109,14 +111,14 @@ class A2D2Dataset(Dataset):
 
         # lista próbek
         for scene in self.scenes:
-            cam_img_dir = os.path.join(self.root, scene, 'camera', camera)
+            cam_img_dir = os.path.join(root_semantic, scene, 'camera', camera)
             for img_path in glob.glob(os.path.join(cam_img_dir, '*.png')):
                 fname = os.path.basename(img_path)
                 parts = fname.split('_')
                 timestamp = parts[0]
                 idx = parts[-1].split('.')[0]
                 label_path = os.path.join(
-                    self.root, scene, 'label', camera,
+                    root_semantic, scene, 'label', camera,
                     f"{timestamp}_label_{self.camera_id}_{idx}.png"
                 )
                 self.images.append(img_path)

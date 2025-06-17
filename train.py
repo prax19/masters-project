@@ -1,5 +1,5 @@
 import os
-import warnings
+import glob
 
 import torch
 from torch import autocast
@@ -30,20 +30,27 @@ def train_model(
     device,
     batch_size = 4,
     num_epochs = 30,
+    warmup_epochs = 0,
     lr = 1e-4,
     weight_decay = 1e-5,
+    alpha = 1.5,
     amp = True
 ):
-    class_names = [cls.name for cls in train_dataset.classes]
-    num_classes = len(train_dataset.classes)
+    
+    classes = [cls for cls in train_dataset.classes]
+    classes_num = len(classes)
     
     # przygotowywanie plików
-    model_root_dir=".\\model\\"
+    ROOT = ".\\model\\"
+
+    os.makedirs(os.path.join(ROOT, ckpt_name), exist_ok=True)
+    model_root_dir=os.path.join(ROOT, ckpt_name)
+
     ckpt_path = os.path.join(model_root_dir, ckpt_name + '.ckpt')
     meta_path = os.path.join(model_root_dir, ckpt_name + '.csv')
 
     # przygotowanie historii / odczyt z pliku
-    history = pd.DataFrame(columns = ['epoch', 'train_loss', 'val_loss', 'mIoU'] + class_names)
+    history = pd.DataFrame(columns = ['epoch', 'lr', 'train_loss', 'val_loss', 'mIoU'] + [cls.name for cls in classes])
     history.index.name = "id"
     if os.path.exists(meta_path):
         history = pd.read_csv(meta_path, index_col='id')
@@ -79,14 +86,27 @@ def train_model(
     #     replace_bn_with_gn(model.aux_classifier)
 
     # przygotowanie modelu oraz warstw wejściowych / wyjściowych
-    model.classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
-    model.aux_classifier[-1] = nn.Conv2d(256, num_classes, kernel_size=1)
+    model.classifier[-1] = nn.Conv2d(256, classes_num, kernel_size=1)
+    model.aux_classifier[-1] = nn.Conv2d(256, classes_num, kernel_size=1)
 
     model = model.to(device=device)
     model = torch.compile(model)
 
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
+
+    warmup_scheduler = optim.lr_scheduler.LinearLR(optimizer,
+        start_factor=1e-3,
+        end_factor=1.0,
+        total_iters=warmup_epochs)
+    base_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, 
+        T_max=num_epochs - warmup_epochs, 
+        eta_min=1e-6)
+    scheduler = optim.lr_scheduler.SequentialLR(
+        optimizer,
+        schedulers=[warmup_scheduler, base_scheduler],
+        milestones=[warmup_epochs])
+
     scaler = torch.amp.GradScaler(device=device, enabled=amp)
     criterion = nn.CrossEntropyLoss()
 
@@ -139,7 +159,7 @@ def train_model(
         model.eval()
         running_val_loss = 0.0
 
-        conf_matrix = torch.zeros((num_classes, num_classes), dtype=torch.int64, device=device)
+        conf_matrix = torch.zeros(classes_num, classes_num, dtype=torch.int64, device=device)
 
         with torch.no_grad():
             for images, masks in tqdm(test_loader):
@@ -163,13 +183,13 @@ def train_model(
                 mask_flat = masks.view(-1)
 
                 # Filtracja nieprawidłowych wartości
-                valid = (mask_flat >= 0) & (mask_flat < num_classes)
+                valid = (mask_flat != 255)
                 pred_flat = pred_flat[valid]
                 mask_flat = mask_flat[valid]
 
                 # Obliczanie macierzy pomyłek
-                indices = num_classes * mask_flat + pred_flat
-                conf_matrix += torch.bincount(indices, minlength=num_classes ** 2).reshape(num_classes, num_classes)
+                indices = classes_num * mask_flat + pred_flat
+                conf_matrix += torch.bincount(indices, minlength=classes_num ** 2).reshape(classes_num, classes_num)
 
         # Obliczanie IoU
         val_loss_epoch = running_val_loss / len(test_loader.dataset)
@@ -182,26 +202,27 @@ def train_model(
         # Historia pomiarów
         ious_cpu = ious.detach().cpu().numpy() 
         row = {
-            'epoch': float(epoch),
-            'train_loss': float(epoch_loss),
-            'val_loss':   float(val_loss_epoch),
-            'mIoU':       float(miou)
+            'epoch':        float(epoch),
+            'lr':           float(optimizer.param_groups[0]['lr']),
+            'train_loss':   float(epoch_loss),
+            'val_loss':     float(val_loss_epoch),
+            'mIoU':         float(miou)
         }
 
-        for idx, cls in enumerate(train_dataset.classes):
+        for idx, cls in enumerate(classes):
             val = ious_cpu[idx]
             row[cls.name] = float(val) if not (val != val) else float('nan')
         
         history.loc[len(history)] = row
         history.to_csv(meta_path)
 
-        print(f"[Epoch {epoch+1}/{num_epochs}] Val   Loss: {val_loss_epoch:.4f} | mIoU: {miou:.4f}")
-        for cls in range(num_classes):
-            classs_name = train_dataset.classes[cls].name if cls < num_classes else f"Class {cls}"
-            if torch.isnan(ious[cls]):
-                print(f"  {classs_name:<30s} IoU: n/a")
-            else:
-                print(f"  {classs_name:<30s} IoU: {ious[cls]:.4f}")
+        # print(f"[Epoch {epoch+1}/{num_epochs}] Val   Loss: {val_loss_epoch:.4f} | mIoU: {miou:.4f}")
+        # for cls in range(classes_num):
+        #     classs_name = classes[cls].name if cls < classes_num else f"Class {cls}"
+        #     if torch.isnan(ious[cls]):
+        #         print(f"  {classs_name:<30s} IoU: n/a")
+        #     else:
+        #         print(f"  {classs_name:<30s} IoU: {ious[cls]:.4f}")
 
         # Zapisanie / nadpisanie checkpointu
         if os.path.exists(ckpt_path):
@@ -219,7 +240,7 @@ def train_model(
         mask = generate_segmentation_mask(
             model=model,
             image=Image.open(".\\test\\test2.png").convert("RGB"),
-            classes=train_dataset.classes,
+            classes=classes,
             device=device
         )
         plt.figure()  
