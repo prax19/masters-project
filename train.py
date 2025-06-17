@@ -45,7 +45,7 @@ def train_model(
     classes_num = len(classes)
     
     # przygotowywanie plików
-    ROOT = ".\\model\\"
+    ROOT = ".\\checkpoints\\"
 
     os.makedirs(os.path.join(ROOT, ckpt_name), exist_ok=True)
     model_root_dir=os.path.join(ROOT, ckpt_name)

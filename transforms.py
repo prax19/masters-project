@@ -5,6 +5,24 @@ import cv2
 
 import numpy as np
 
+transforms_test = A.Compose([
+    A.HorizontalFlip(p=0.5),
+    A.Affine(
+        scale=(0.8, 1.2), 
+        rotate=(-8, 8), 
+        translate_percent=(0.1, 0.1), 
+        interpolation=cv2.INTER_NEAREST, 
+        mask_interpolation=cv2.INTER_NEAREST, 
+        border_mode=cv2.BORDER_REFLECT, 
+        fill=0, 
+        fill_mask=255, 
+        p=1.0
+    ),
+    A.PadIfNeeded(min_height=768, min_width=768, border_mode=cv2.BORDER_REFLECT),
+    A.RandomCrop(height=768, width=768),
+    ToTensorV2()
+])
+
 transforms = A.Compose([
     A.HorizontalFlip(p=0.5),
     A.Affine(

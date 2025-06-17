@@ -32,20 +32,42 @@ def apply_mask_palette(mask, palette):
         mask_rgb[mask_np == cid] = rgb
     return mask_rgb
 
-def display_image_and_mask(image, mask, mask_palette):
-    '''Wyświetla obraz oraz jego maskę.'''
+def display_image_and_mask(
+        mask_palette,
+        image, 
+        mask_true = None,
+        mask_pred = None,
+    ):
+    '''Wyświetla obraz oraz jego maski.'''
     if isinstance(image, torch.Tensor):
-        image = image.cpu()
+        image = image.cpu().permute(1,2,0).numpy()
     elif isinstance(image, np.ndarray):
         pass
     else:
-        raise TypeError(f"Unsupported mask type: {type(mask)}")
+        raise TypeError(f"Unsupported image type: {type(image)}")
 
-    img_np = np.clip(image.permute(1,2,0).numpy(), 0, 1)
-    # img_np = np.clip(img_np, 0, 1)
+    n_images = 1
+    if mask_true is not None:
+        n_images += 1
+    if mask_pred is not None:
+        n_images += 1
 
-    mask_rgb = apply_mask_palette(mask=mask, palette=mask_palette)
+    k_image = 1
 
-    plt.subplot(1, 2, 1); plt.imshow(img_np);   plt.axis('off'); plt.title("Image")
-    plt.subplot(1, 2, 2); plt.imshow(mask_rgb); plt.axis('off'); plt.title("Mask")
+    # Konstrukcja wykresów
+    plt.figure(figsize=(12, 6))
+
+    img_np = np.clip(image, 0, 1)
+    plt.subplot(1, n_images, k_image); plt.imshow(img_np);   plt.axis('off'); plt.title("Image")
+
+    if mask_true is not None:
+        k_image += 1
+        mask_rgb = apply_mask_palette(mask=mask_true, palette=mask_palette)
+        plt.subplot(1, n_images, k_image); plt.imshow(mask_rgb); plt.axis('off'); plt.title("True mask")
+    
+    if mask_pred is not None:
+        k_image += 1
+        mask2_rgb = apply_mask_palette(mask=mask_pred, palette=mask_palette)
+        plt.subplot(1, n_images, k_image); plt.imshow(mask2_rgb); plt.axis('off'); plt.title("Predicted Mask")
+    
     plt.tight_layout(); plt.show()
