@@ -14,6 +14,9 @@ from tqdm.notebook import tqdm
 import matplotlib.pyplot as plt
 from PIL import Image
 
+from typing_extensions import deprecated
+
+@deprecated("An old experimental method.")
 def replace_bn_with_gn(module, num_groups=32):
     for name, child in module.named_children():
         if isinstance(child, nn.BatchNorm2d):
@@ -22,6 +25,7 @@ def replace_bn_with_gn(module, num_groups=32):
         else:
             replace_bn_with_gn(child, num_groups)
 
+@deprecated("An old trainin method. Please, use `usage_notebook.pipynb` instead.")
 def train_model(
     model,
     ckpt_name,

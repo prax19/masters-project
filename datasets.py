@@ -1,8 +1,10 @@
 import os
 import glob
-import json
 from collections import namedtuple
 import random
+
+from pathlib import Path
+from typing import Callable, Optional, Union
 
 import numpy as np
 import torch
@@ -10,9 +12,10 @@ from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms.v2 as v2
 
-from torchvision.datasets.utils import extract_archive, iterable_to_str, verify_str_arg
+from torchvision.datasets.utils import verify_str_arg
+from torchvision.datasets.vision import VisionDataset
 
-class A2D2Dataset(Dataset):
+class A2D2Dataset(VisionDataset):
 
     A2D2DatasetClass = namedtuple(
         "A2D2DatasetClass",
@@ -80,19 +83,19 @@ class A2D2Dataset(Dataset):
 
     def __init__(
             self,
-            root,
-            split=None,
-            scenes=None,
-            camera='cam_front_center',
-            transforms=None
+            root: Union[str, Path],
+            split: str = "train",
+            scenes = None,
+            camera = 'cam_front_center',
+            transform: Optional[Callable] = None,
+            target_transform: Optional[Callable] = None,
+            transforms: Optional[Callable] = None,
     ):
-        self.root = root
+        super().__init__(root, transforms, transform, target_transform)
         root_semantic = os.path.join(root, 'camera_lidar_semantic')
-
         self.scenes = scenes or sorted(os.listdir(root_semantic))
         self.camera = camera
         self.camera_id = camera.replace('cam_', '').replace('_', '')
-        self.transforms = transforms or v2.PILToTensor()
         self.images = []
         self.targets = []
 
@@ -104,7 +107,7 @@ class A2D2Dataset(Dataset):
                 _, self.scenes = self.get_train_val_scenes()
 
         # budujemy jednowymiarową LUT 256^3 -> class_id
-        lut = np.zeros((256**3,), dtype=np.int64)
+        lut = np.full((256**3,), fill_value=255, dtype=np.int64)
         for _, cid, (r, g, b) in A2D2Dataset.classes:
             lut[r * 256 * 256 + g * 256 + b] = cid
         self._lut = lut  # atrybut lookup‐table
@@ -133,21 +136,15 @@ class A2D2Dataset(Dataset):
         img_pil = Image.open(self.images[idx]).convert('RGB')
         trg_pil = Image.open(self.targets[idx])
 
-        # Wspólne transformacje geometryczne (obraz + maska)
-        image, target = self.transforms(img_pil, trg_pil)
+        if self.transforms is not None:
+            image, target = self.transforms(img_pil, trg_pil)
 
         # Przetwarzanie PIL‐owej maski lbl_geo na NumPy, zmiana kolorów
-        # lbl_np = np.array(target, dtype=np.uint8)
-        # r = lbl_np[..., 0].astype(np.int32)
-        # g = lbl_np[..., 1].astype(np.int32)
-        # b = lbl_np[..., 2].astype(np.int32)
-        # idxs = (r * 256 * 256) + (g * 256) + b
-        # class_map = self._lut[idxs]
-
-        # target = torch.from_numpy(target).long()
-
-        r, g, b = target[0].long(), target[1].long(), target[2].long()
-        idxs = (r * 256 * 256 + g * 256 + b).cpu().numpy()
+        lbl_np = np.array(target, dtype=np.uint8)
+        r = lbl_np[..., 0].astype(np.int32)
+        g = lbl_np[..., 1].astype(np.int32)
+        b = lbl_np[..., 2].astype(np.int32)
+        idxs = (r * 256 * 256) + (g * 256) + b
         class_map = torch.from_numpy(self._lut[idxs]).long()
 
         return image, class_map

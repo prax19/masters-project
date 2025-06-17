@@ -4,6 +4,8 @@ Niniejsze repozytorium zawiera projekt magisterski realizowany w ramach pracy pt
 
 Projekt skupia się wokół zastosowania technik uczenia głębokiego w treningu modeli realizujących zadanie *segmentacji semantycznej*. Głównym celem projektu jest przygotowanie skryptów w języku *Python*, które posłużą do **treningu**, **ewaluacji** oraz **inferencji** modeli konwolucyjnych w celu porównania ich wydajności.
 
+Projekt w głównej mierze opiera się na bibliotece [segmentation_models.pytorch](https://github.com/qubvel-org/segmentation_models.pytorch/tree/main), która dostarcza sprawne implementacje różnych *funkcji strat*, *metryk*, ale również *enkoderów* oraz pełnych *architektur modeli*. Do eliminacji *boilerplateu* wkorzystano bibliotekę [pytorch-lightning](https://github.com/Lightning-AI/pytorch-lightning), a augmentacje realizowane są z wykorzystaniem biblioteki [Albumentations](https://github.com/albumentations-team/albumentations), która stanowi standard w branży. Zastosowanie niniejszych biliotek pozywtywnie wpłynęło na wydajność uczenia sieci w stosunku do ręcznych implementacji oraz standardowych rozwiązań biblioteki `torchvision`.
+
 ## Porównywane architektury
 - [**resnet50**](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.resnet50.html) ze wstępnie wytrenowanymi wagami.
 
@@ -16,6 +18,7 @@ Projekt skupia się wokół zastosowania technik uczenia głębokiego w treningu
 2. Pobrać ręcznie [pełny zbiór danych A2D2](https://aev-autonomous-driving-dataset.s3.eu-central-1.amazonaws.com/camera_lidar_semantic.tar), bądź Cityscapes ([obrazy](https://www.cityscapes-dataset.com/file-handling/?packageID=3) oraz [maski](https://www.cityscapes-dataset.com/file-handling/?packageID=1)).
 3. Rozpakować zbiory danych z użyciem oprogramowania archiwizującego jak np. [7-zip](https://www.7-zip.org/).
 4. Przenieść rozpakowany folder z każdego archiwum do odpowiednich katalogów wewnątrz `./data/`.
+5. Skorzystać z notatnika `usage_notebook.ipynb` w celu uruchomienia treningu oraz inferencji.
 
 ### FAQ przy instalacji
 - Czy lista `requirements.txt` jest kompletna?
@@ -31,3 +34,15 @@ Projekt skupia się wokół zastosowania technik uczenia głębokiego w treningu
 - Dlaczego należy rozpakować zbiór z pomocą np. *7zip*?
 
     *Eksplorator Plików* systemu Windows nie jest zoptymalizowany pod kątem archiwów `.tar`. Rozpakowywanie zbioru mogłoby zająć bardzo dużo czasu niezależnie od sprzętu.
+
+### Cytowanie
+```Bibtex
+@misc{Piróg:2025,
+  Author = {Patryk Piróg},
+  Title = {Segmentacja semantyczna w systemach nowoczesnych pojazdów},
+  Year = {2025},
+  Publisher = {GitHub},
+  Journal = {GitHub repository},
+  Howpublished = {\url{https://github.com/prax19/masters-project}}
+}
+```

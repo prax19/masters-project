@@ -5,12 +5,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from typing_extensions import deprecated
+
 import torchvision.transforms.v2 as v2
 from torchvision.models.segmentation import deeplabv3_resnet50, DeepLabV3_ResNet50_Weights
 
 import numpy as np
 from PIL import Image
 
+@deprecated("An old experimental method.")
 def replace_bn_with_gn(module, num_groups=32):
     for name, child in module.named_children():
         if isinstance(child, nn.BatchNorm2d):
@@ -19,6 +22,7 @@ def replace_bn_with_gn(module, num_groups=32):
         else:
             replace_bn_with_gn(child, num_groups)
 
+@deprecated("An old experimental method.")
 def generate_segmentation_mask(
         model,
         image: Image,
@@ -63,6 +67,7 @@ def generate_segmentation_mask(
     color_pred_interpolated = cp_up.squeeze(0).permute(1, 2, 0).cpu().numpy().astype(np.uint8)
     return Image.fromarray(color_pred_interpolated)
 
+@deprecated("An old experimental method.")
 def generate_segmentation_mask_file(
         checkpoint_path, 
         input_img_path, 
@@ -107,6 +112,7 @@ def generate_segmentation_mask_file(
 
     return mask
 
+@deprecated("An old experimental method.")
 def generate_segmentation_mask_tiled(
     checkpoint_path: str,
     input_img_path: str,

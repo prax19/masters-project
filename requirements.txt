@@ -5,4 +5,7 @@ torch
 tochvision
 tqdm
 Pillow
-cityscapesscripts
+segmentation-models-pytorch
+pytorch-lightning
+albumentations
+typing_extensions
