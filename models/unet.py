@@ -3,18 +3,26 @@ import segmentation_models_pytorch as smp
 import torch
 from torch.optim import lr_scheduler
 
+from ..utils.encoding import ClassMappeer
+
 class UnetModel(pl.LightningModule):
-    def __init__(self, encoder_weights, encoder_name, in_channels, mapping, **kwargs):
+    def __init__(
+            self, 
+            encoder_weights, 
+            encoder_name, 
+            in_channels, 
+            mapper: ClassMappeer, 
+            **kwargs
+        ):
         super().__init__()
 
-        self.number_of_classes = len(mapping)
-        self.mapping = mapping
+        self.mapper = mapper
 
         self.model = smp.Unet(
             encoder_weights=encoder_weights,
             encoder_name=encoder_name,
             in_channels=in_channels,
-            classes=self.number_of_classes,
+            classes=len(self.mapper.mapping),
             **kwargs,
         )
 
@@ -57,8 +65,8 @@ class UnetModel(pl.LightningModule):
         logits_mask = self.forward(image)
 
         assert (
-            logits_mask.shape[1] == self.number_of_classes
-        )  # [batch_size, number_of_classes, H, W]
+            logits_mask.shape[1] == len(self.mapper.mapping)
+        )  # [batch_size, len(self.mapper), H, W]
 
         # Ensure the logits mask is contiguous
         logits_mask = logits_mask.contiguous()
@@ -77,7 +85,7 @@ class UnetModel(pl.LightningModule):
 
         # Compute true positives, false positives, false negatives, and true negatives
         tp, fp, fn, tn = smp.metrics.get_stats(
-            pred_mask, mask, mode="multiclass", num_classes=self.number_of_classes, ignore_index=255
+            pred_mask, mask, mode="multiclass", num_classes=len(self.mapper.mapping), ignore_index=255
         )
 
         return {
@@ -116,7 +124,7 @@ class UnetModel(pl.LightningModule):
         # logging
         if stage == "val":
             for idx, val in enumerate(per_class):
-                entry = self.mapping.get(idx, (idx, f"class_{idx}", None))
+                entry = self.mapper.mapping.get(idx, (idx, f"class_{idx}", None))
                 _, class_name, _ = entry
                 self.temp_train_data[f"iou_{class_name}"] = val.item()
             
