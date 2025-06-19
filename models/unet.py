@@ -4,24 +4,28 @@ import torch
 from torch.optim import lr_scheduler
 
 class UnetModel(pl.LightningModule):
-    def __init__(self, encoder_weights, encoder_name, in_channels, out_classes, **kwargs):
+    def __init__(self, encoder_weights, encoder_name, in_channels, mapping, **kwargs):
         super().__init__()
+
+        self.number_of_classes = len(mapping)
+        self.mapping = mapping
+
         self.model = smp.Unet(
             encoder_weights=encoder_weights,
             encoder_name=encoder_name,
             in_channels=in_channels,
-            classes=out_classes,
+            classes=self.number_of_classes,
             **kwargs,
         )
 
         # Preprocessing parameters for image normalization
         params = smp.encoders.get_preprocessing_params(encoder_name)
-        self.number_of_classes = out_classes
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
         # Loss function for multi-class segmentation
-        self.loss_fn = smp.losses.DiceLoss(smp.losses.MULTICLASS_MODE, from_logits=True, ignore_index=255)
+        self.dice_loss = smp.losses.DiceLoss(smp.losses.MULTICLASS_MODE, from_logits=True, ignore_index=255)
+        self.focal_loss = smp.losses.FocalLoss(smp.losses.MULTICLASS_MODE, alpha=0.25, gamma=2.0, ignore_index=255)
 
         # Step metrics tracking
         self.training_step_outputs = []
@@ -60,7 +64,10 @@ class UnetModel(pl.LightningModule):
         logits_mask = logits_mask.contiguous()
 
         # Compute loss using multi-class Dice loss (pass original mask, not one-hot encoded)
-        loss = self.loss_fn(logits_mask, mask)
+        loss = (
+            0.8 * self.dice_loss(logits_mask, mask) +
+            0.2 * self.focal_loss(logits_mask, mask)
+        )
 
         # Apply softmax to get probabilities for multi-class segmentation
         prob_mask = logits_mask.softmax(dim=1)
@@ -108,10 +115,10 @@ class UnetModel(pl.LightningModule):
 
         # logging
         if stage == "val":
-            for cid, val in enumerate(per_class):
-                self.temp_train_data.update({
-                    f"iou_cls{cid}": val.item()
-                })
+            for idx, val in enumerate(per_class):
+                entry = self.mapping.get(idx, (idx, f"class_{idx}", None))
+                _, class_name, _ = entry
+                self.temp_train_data[f"iou_{class_name}"] = val.item()
             
         self.log(f"{stage}_miou",
             miou_dataset,

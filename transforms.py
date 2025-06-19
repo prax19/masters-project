@@ -19,8 +19,7 @@ transforms_test = A.Compose([
         p=1.0
     ),
     A.PadIfNeeded(min_height=768, min_width=768, border_mode=cv2.BORDER_REFLECT),
-    A.RandomCrop(height=768, width=768),
-    ToTensorV2()
+    A.RandomCrop(height=768, width=768)
 ])
 
 transforms = A.Compose([
@@ -62,13 +61,67 @@ transforms = A.Compose([
             A.HueSaturationValue(p=1.0),
         ],
         p=0.9,
-    ),
-    ToTensorV2()  
+    )
 ])
 
+class IndexEncoder:
+    """
+    Klasa odpowiadająca za mapowanie `train_id` oraz zapewnienie zgodności augmentacji
+    z biblioteką Albumentations.
+    """
+    def __init__(
+            self, 
+            dataset_class, 
+            train_transforms,
+            infer_transforms,
+            reduced_subset: bool = False
+        ):
+        self.train_transforms = train_transforms
+        self.infer_transforms = infer_transforms
+        self.reduced_subset = reduced_subset
 
-def alb_wrapper(img, mask):
-    aug = transforms(image=np.asarray(img), mask=np.asarray(mask))
-    img_t  = aug["image"].float() / 255.   # CHW float32
-    mask_t = aug["mask"].long()            # HW int64
-    return img_t, mask_t
+        self.mapping = {}
+        for cls in dataset_class.classes:
+            if reduced_subset:
+                self.mapping.setdefault(cls.train_id, (cls.id, cls.name, cls.color))
+            else:
+                self.mapping.setdefault(cls.id, (cls.train_id, cls.name, cls.color))
+
+        self.id2tid = {
+            cls.id: (cls.train_id if reduced_subset else cls.id)
+            for cls in dataset_class.classes
+        }
+
+    def encode_indexes(self, mask: np.ndarray, **kwargs) -> np.ndarray:
+        if not self.reduced_subset:
+            return mask
+        out = np.full_like(mask, 255)
+        for orig_id, train_id in self.id2tid.items():
+            out[mask == orig_id] = train_id
+        return out
+    
+    def wrap_train(self, img, mask):
+        trans = A.Compose([
+            self.train_transforms,
+            A.Lambda(mask=self.encode_indexes),
+            ToTensorV2()
+        ])
+        aug = trans(image=np.asarray(img), mask=np.asarray(mask))
+        return aug["image"].float() / 255., aug["mask"].long()
+    
+    def wrap_infer(self, img, mask):
+        trans = A.Compose([
+            self.infer_transforms,
+            A.Lambda(mask=self.encode_indexes),
+            ToTensorV2()
+        ])
+        aug = trans(image=np.asarray(img), mask=np.asarray(mask))
+        return aug["image"].float() / 255., aug["mask"].long()
+    
+    def preprocess_image(self, img):
+        trans = A.Compose([
+            self.infer_transforms,
+            ToTensorV2()
+        ])
+        aug = trans(image=np.asarray(img))
+        return aug["image"].float() / 255.
