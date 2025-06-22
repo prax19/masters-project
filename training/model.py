@@ -6,6 +6,8 @@ from utils.encoding import ClassMappeer
 import torch
 import torch.nn as nn
 
+import psutil
+
 class ExperimentalModel(pl.LightningModule):
 
     def __init__(
@@ -20,6 +22,7 @@ class ExperimentalModel(pl.LightningModule):
         **kwargs
     ):
         super().__init__()
+        self.psutil = psutil.Process()
         self.mapper = mapper
         self.t_max = t_max
         self.save_hyperparameters()
@@ -86,6 +89,8 @@ class ExperimentalModel(pl.LightningModule):
         )
 
         self.log(name=f"{stage}_loss", value=float(loss), prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        self.log(name=f"{stage}_memory_gpu", value=(torch.cuda.max_memory_allocated() / (1024**3)), prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        self.log(name=f"{stage}_memory_cpu", value=(self.psutil.memory_info().rss / (1024**3)), prog_bar=True, logger=True, on_step=False, on_epoch=True)
 
         return {
             "loss": loss,
