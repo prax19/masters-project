@@ -6,6 +6,8 @@ from utils.encoding import ClassMapper
 import torch
 import torch.nn as nn
 
+torch.set_float32_matmul_precision("high")
+
 import psutil
 
 class ExperimentalModel(pl.LightningModule):

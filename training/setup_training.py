@@ -1,4 +1,5 @@
 import os
+import yaml
 import pandas as pd
 import datetime
 
@@ -37,7 +38,7 @@ def setup_training(
 
     trainer = pl.Trainer(
         max_epochs=EPOCHS,
-        precision=16,
+        precision="16-mixed",
         logger=logger,
         val_check_interval=1.0
     )
@@ -78,12 +79,19 @@ def setup_training(
     log.to_csv(os.path.join(".", log_path, f"metrics_fixed.csv"))
 
     # metadata
-    metadata = [
-        {'model': backbone.__name__, 
-         'encoder': encoder, 
-         'weights': weights, 
-         'peak_lr': new_lr,
-         'start_time': training_start_time, 
-         'finish_time': training_finish_time}
-    ]
-    pd.DataFrame(metadata).to_csv(os.path.join(".", log_path, f"metadata.csv"))
+    metadata = f"""
+        'model':
+        - 'name': {backbone.__name__}
+        - 'encoder': {encoder}
+        - 'weights': {weights}
+        - 'loss_fn':
+            - 'Dice Loss': 0.8
+            - 'Focal Loss': 0.2
+        - 'peak_lr': {new_lr}
+        - 'time':
+            - 'start': {training_start_time}
+            - 'finish': {training_finish_time}
+        """
+    metadata = yaml.safe_load(metadata)
+    with open(os.path.join('.', log_path, 'metadata.yaml'), 'w') as file:
+        yaml.dump(metadata, file)
