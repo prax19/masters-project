@@ -1,7 +1,7 @@
 import segmentation_models_pytorch as smp
 import pytorch_lightning as pl
 
-from utils.encoding import ClassMappeer
+from utils.encoding import ClassMapper
 
 import torch
 import torch.nn as nn
@@ -15,7 +15,7 @@ class ExperimentalModel(pl.LightningModule):
         model_backbone: nn.Module,
         encoder: str,
         weights: str,
-        mapper: ClassMappeer,
+        mapper: ClassMapper,
         in_channels=3,
         t_max: int = 50,
         lr=2e-4,

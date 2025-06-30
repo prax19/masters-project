@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.optim import lr_scheduler
 
-from utils.encoding import ClassMappeer
+from utils.encoding import ClassMapper
 
 from typing_extensions import deprecated
 
@@ -16,7 +16,7 @@ class UnetModel(pl.LightningModule):
             encoder_weights, 
             encoder_name, 
             in_channels, 
-            mapper: ClassMappeer,
+            mapper: ClassMapper,
             t_max: int = 50,
             lr=2e-4,
             **kwargs,

@@ -4,10 +4,12 @@ from albumentations.pytorch import ToTensorV2
 import torch
 import numpy as np
 
-class ClassMappeer:
+from typing_extensions import deprecated
+
+class ClassMapper:
     """
     Klasa odpowiadająca za mapowanie i kodowanie indeksów pikseli w zależności od zestawu klas zawartych w zbiorze danych.
-    Zawiera ona wrappery biblioteki `Albumentations`, które przekazane w miejsce parametrów `transforms` Datasetów posłużą do wykonania transformacji, przeprowadzenia kodowania na podstawie zbioru klas oraz konwersji do tensora.
+    Zawiera ona wrappery biblioteki `Albumentations`, które przekazane w miejsce parametrów `transforms` Datasetów, posłużą do wykonania transformacji, przeprowadzenia kodowania na podstawie zbioru klas oraz konwersji do tensora.
     Dodatkowo klasa ta dostarcza pole `mapping`, które służy jako paleta kolorów i nazw klas zbioru danych.
     """
     def __init__(
@@ -17,6 +19,10 @@ class ClassMappeer:
             infer_transforms,
             reduced_subset: bool = False
         ):
+        self.mapping_dtype = np.uint8
+        dtype_info = np.iinfo(self.mapping_dtype)
+        self.dtype_bounds = range(dtype_info.min, dtype_info.max + 1)
+
         self.train_transforms = train_transforms
         self.infer_transforms = infer_transforms
         self.reduced_subset = reduced_subset
@@ -24,9 +30,12 @@ class ClassMappeer:
         self.mapping = {}
         for cls in dataset_class.classes:
             if reduced_subset:
-                self.mapping.setdefault(cls.train_id, (cls.id, cls.name, cls.color))
+                print(f'{self.dtype_bounds}')
+                index = cls.train_id if cls.train_id in self.dtype_bounds else 255
+                self.mapping.setdefault(index, (cls.id, cls.name, cls.color))
             else:
-                self.mapping.setdefault(cls.id, (cls.train_id, cls.name, cls.color))
+                index = cls.id if cls.id in self.dtype_bounds else 255
+                self.mapping.setdefault(index, (cls.train_id, cls.name, cls.color))
 
         self.id2tid = {
             cls.id: (cls.train_id if reduced_subset else cls.id)
@@ -36,9 +45,12 @@ class ClassMappeer:
     def encode_indexes(self, mask: np.ndarray, **kwargs) -> np.ndarray:
         if not self.reduced_subset:
             return mask
-        out = np.full_like(mask, 255)
+        out = np.full_like(a=mask, fill_value=255, dtype=self.mapping_dtype)
         for orig_id, train_id in self.id2tid.items():
-            out[mask == orig_id] = train_id
+            if train_id in self.dtype_bounds:
+                out[mask == orig_id] = train_id
+            else:
+                out[mask == orig_id] = 255
         return out
     
     def wrap_train(self, img, mask):
@@ -83,7 +95,7 @@ class ClassMappeer:
         else:
             raise ValueError(f"Unexpected mask shape {mask_arr.shape}")
         
-        mask_rgb = np.zeros((*mask_np.shape, 3), dtype=np.uint8)
+        mask_rgb = np.zeros((*mask_np.shape, 3), dtype=self.mapping_dtype)
         for cid, (_, _, rgb) in self.mapping.items():
             mask_rgb[mask_np == cid] = rgb
         return mask_rgb
@@ -105,3 +117,8 @@ class ClassMappeer:
         self.id2tid         = state["id2tid"]
         self.train_transforms = A.from_dict(state["train_tf_cfg"])
         self.infer_transforms = A.from_dict(state["infer_tf_cfg"])
+
+@deprecated('Legacy class name.')
+class ClassMappeer(ClassMapper):
+    def __init__(self):
+        super.__init__(self)

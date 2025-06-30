@@ -1,1 +1,1 @@
-from utils.encoding import ClassMappeer
+from utils.encoding import ClassMapper

@@ -3,10 +3,10 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .encoding import ClassMappeer
+from .encoding import ClassMapper
 
 def display_image_and_mask(
-        mapper: ClassMappeer,
+        mapper: ClassMapper,
         image, 
         mask_true = None,
         mask_pred = None,

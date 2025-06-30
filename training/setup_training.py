@@ -1,0 +1,89 @@
+import os
+import pandas as pd
+import datetime
+
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import CSVLogger
+from pytorch_lightning.tuner import Tuner
+
+from segmentation_models_pytorch.base import SegmentationModel
+from torch.utils.data import DataLoader
+
+from utils.encoding import ClassMapper
+from training.model import ExperimentalModel
+
+def setup_training(
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    mapper: ClassMapper,
+    backbone: SegmentationModel,
+    encoder: str,
+    weights: str,
+    epoch: int = 50,
+):
+    EPOCHS = epoch
+    T_MAX = EPOCHS * len(train_loader)
+
+    model = ExperimentalModel(
+        model_backbone=backbone,
+        weights=weights,
+        encoder=encoder,
+        in_channels=3,
+        t_max=T_MAX,
+        mapper=mapper
+    )
+
+    logger = CSVLogger("logs", name=backbone.__name__)
+
+    trainer = pl.Trainer(
+        max_epochs=EPOCHS,
+        precision=16,
+        logger=logger,
+        val_check_interval=1.0
+    )
+
+    # Strojenie learning rate
+    tuner = Tuner(trainer)
+    lr_finder = tuner.lr_find(
+        model,
+        train_dataloaders=train_loader,
+        val_dataloaders=val_loader,
+        min_lr=1e-6,
+        max_lr=1e-2,
+        num_training=len(train_loader),
+        early_stop_threshold=None
+    )
+
+    new_lr = lr_finder.suggestion()
+
+    model.hparams.lr = new_lr
+
+    # Trening
+    training_start_time = datetime.datetime.now()
+    trainer.fit(
+        model,
+        train_dataloaders=train_loader,
+        val_dataloaders=val_loader,
+    )
+    training_finish_time = datetime.datetime.now()
+
+    # Naprawa pliku z metrykami
+    log_path = trainer.logger.log_dir
+    log_file_path = os.path.join(".", log_path, "metrics.csv")
+
+    log = pd.read_csv(log_file_path, sep=',')
+    log = log.groupby('step').mean()
+    log.index.name = "step"
+
+    log.to_csv(os.path.join(".", log_path, f"metrics_fixed.csv"))
+
+    # metadata
+    metadata = [
+        {'model': backbone.__name__, 
+         'encoder': encoder, 
+         'weights': weights, 
+         'peak_lr': new_lr,
+         'start_time': training_start_time, 
+         'finish_time': training_finish_time}
+    ]
+    pd.DataFrame(metadata).to_csv(os.path.join(".", log_path, f"metadata.csv"))
