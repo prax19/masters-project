@@ -30,7 +30,6 @@ class ClassMapper:
         self.mapping = {}
         for cls in dataset_class.classes:
             if reduced_subset:
-                print(f'{self.dtype_bounds}')
                 index = cls.train_id if cls.train_id in self.dtype_bounds else 255
                 self.mapping.setdefault(index, (cls.id, cls.name, cls.color))
             else:

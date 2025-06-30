@@ -11,6 +11,7 @@ from segmentation_models_pytorch.base import SegmentationModel
 from torch.utils.data import DataLoader
 
 from utils.encoding import ClassMapper
+from utils.benchmark import start_benchmark
 from training.model import ExperimentalModel
 
 def setup_training(
@@ -78,6 +79,8 @@ def setup_training(
 
     log.to_csv(os.path.join(".", log_path, f"metrics_fixed.csv"))
 
+    latency, fps, aloc, rese, peak = start_benchmark(model)
+
     # metadata
     metadata = f"""
         'model':
@@ -91,6 +94,12 @@ def setup_training(
         - 'time':
             - 'start': {training_start_time}
             - 'finish': {training_finish_time}
+        - 'benchmark':
+            - 'latency': {latency}
+            - 'fps': {fps}
+            - 'aloc_mem': {aloc}
+            - 'reserved_mem': {rese}
+            - 'peak_mem': {peak}
         """
     metadata = yaml.safe_load(metadata)
     with open(os.path.join('.', log_path, 'metadata.yaml'), 'w') as file:
