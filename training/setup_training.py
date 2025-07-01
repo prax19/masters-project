@@ -21,6 +21,7 @@ def setup_training(
     backbone: SegmentationModel,
     encoder: str,
     weights: str,
+    losses: dict,
     epoch: int = 50,
 ):
     EPOCHS = epoch
@@ -32,6 +33,7 @@ def setup_training(
         encoder=encoder,
         in_channels=3,
         t_max=T_MAX,
+        losses=losses,
         mapper=mapper
     )
 
@@ -81,15 +83,18 @@ def setup_training(
 
     latency, fps, aloc, rese, peak = start_benchmark(model)
 
+    flat_losses = {}
+    for loss_cfg in losses:
+        for name, wrapper in loss_cfg.items():
+            flat_losses[name] = wrapper.weight
+
     # metadata
     metadata = f"""
         'model':
         - 'name': {backbone.__name__}
         - 'encoder': {encoder}
         - 'weights': {weights}
-        - 'loss_fn':
-            - 'Dice Loss': 0.8
-            - 'Focal Loss': 0.2
+        - 'loss_fn': {flat_losses}
         - 'peak_lr': {new_lr}
         - 'time':
             - 'start': {training_start_time}

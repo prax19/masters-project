@@ -10,6 +10,16 @@ torch.set_float32_matmul_precision("high")
 
 import psutil
 
+class WeightedLoss(nn.Module):
+    """Opakowuje dowolną funkcję straty i wagę, zwraca weight * loss_fn(...)"""
+    def __init__(self, loss_fn: nn.Module, weight: float):
+        super().__init__()
+        self.loss_fn = loss_fn
+        self.weight = weight
+
+    def forward(self, logits, target):
+        return self.weight * self.loss_fn(logits, target)
+
 class ExperimentalModel(pl.LightningModule):
 
     def __init__(
@@ -18,6 +28,7 @@ class ExperimentalModel(pl.LightningModule):
         encoder: str,
         weights: str,
         mapper: ClassMapper,
+        losses: dict[str, WeightedLoss] | None = None,
         in_channels=3,
         t_max: int = 50,
         lr=2e-4,
@@ -41,8 +52,24 @@ class ExperimentalModel(pl.LightningModule):
         self.register_buffer("std", torch.tensor(params["std"]).view(1, 3, 1, 1))
         self.register_buffer("mean", torch.tensor(params["mean"]).view(1, 3, 1, 1))
 
-        self.dice_loss = smp.losses.DiceLoss(smp.losses.MULTICLASS_MODE, from_logits=True, ignore_index=255)
-        self.focal_loss = smp.losses.FocalLoss(smp.losses.MULTICLASS_MODE, alpha=0.25, gamma=2.0, ignore_index=255)
+        if losses is None:
+            losses = {
+                'dice':  WeightedLoss(
+                    smp.losses.DiceLoss(
+                        smp.losses.MULTICLASS_MODE,
+                        from_logits=True,
+                        ignore_index=255
+                    ), 0.8
+                ),
+                'focal': WeightedLoss(
+                    smp.losses.FocalLoss(
+                        smp.losses.MULTICLASS_MODE,
+                        alpha=0.25, gamma=2.0,
+                        ignore_index=255
+                    ), 0.2
+                ),
+            }
+        self.losses = nn.ModuleDict(losses)
 
         self.training_step_outputs = []
         self.validation_step_outputs = []
@@ -78,10 +105,8 @@ class ExperimentalModel(pl.LightningModule):
         logits_mask = logits_mask.contiguous()
 
         # Compute loss using multi-class Dice loss (pass original mask, not one-hot encoded)
-        loss = (
-            0.8 * self.dice_loss(logits_mask, mask) +
-            0.2 * self.focal_loss(logits_mask, mask)
-        )
+        loss = sum(loss_module(logits_mask, mask) for loss_module in self.losses.values())
+
 
         pred_mask = logits_mask.softmax(dim=1).argmax(dim=1)
 
