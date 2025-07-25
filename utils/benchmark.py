@@ -6,9 +6,9 @@ def start_benchmark(
     model,
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
-    model.to(device).eval()
+    model.to(device).eval().half()
 
-    dummy = torch.randn(1, 3, 1024, 2048, device="cuda")  # batch = 1, 1024×2048
+    dummy = torch.randn(1, 3, 1024, 2048, device="cuda").half()  # batch = 1, 1024×2048
 
     #w warm up
     torch.backends.cudnn.benchmark = True       # autotuner cuDNN
@@ -23,7 +23,7 @@ def start_benchmark(
     torch.cuda.reset_peak_memory_stats(device)
     torch.cuda.empty_cache()
 
-    with torch.no_grad():
+    with torch.no_grad(), torch.amp.autocast("cuda"):
         for _ in range(reps):
             starter.record()
             _ = model(dummy)
