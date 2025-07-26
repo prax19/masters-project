@@ -22,9 +22,9 @@ def setup_training(
     encoder: str,
     weights: str,
     losses: dict,
-    epoch: int = 50,
+    epochs: int = 50,
 ):
-    EPOCHS = epoch
+    EPOCHS = epochs
     T_MAX = EPOCHS * len(train_loader)
 
     model = ExperimentalModel(
@@ -43,7 +43,8 @@ def setup_training(
         max_epochs=EPOCHS,
         precision="16-mixed",
         logger=logger,
-        val_check_interval=1.0
+        val_check_interval=743/len(train_loader),
+        max_steps=T_MAX
     )
 
     # Strojenie learning rate
@@ -54,7 +55,7 @@ def setup_training(
         val_dataloaders=val_loader,
         min_lr=1e-6,
         max_lr=1e-2,
-        num_training=len(train_loader),
+        num_training=743,
         early_stop_threshold=None
     )
 
@@ -73,20 +74,19 @@ def setup_training(
 
     # Naprawa pliku z metrykami
     log_path = trainer.logger.log_dir
-    log_file_path = os.path.join(".", log_path, "metrics.csv")
+    # log_file_path = os.path.join(".", log_path, "metrics.csv")
 
-    log = pd.read_csv(log_file_path, sep=',')
-    log = log.groupby('step').mean()
-    log.index.name = "step"
+    # log = pd.read_csv(log_file_path, sep=',')
+    # log = log.groupby('step').mean()
+    # log.index.name = "step"
 
-    log.to_csv(os.path.join(".", log_path, f"metrics_fixed.csv"))
+    # log.to_csv(os.path.join(".", log_path, f"metrics_fixed.csv"))
 
     latency, fps, aloc, rese, peak = start_benchmark(model)
 
     flat_losses = {}
-    for loss_cfg in losses:
-        for name, wrapper in loss_cfg.items():
-            flat_losses[name] = wrapper.weight
+    for name, wrapper in losses.items():
+        flat_losses[name] = wrapper.weight
 
     # metadata
     metadata = f"""

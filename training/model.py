@@ -30,7 +30,7 @@ class ExperimentalModel(pl.LightningModule):
         mapper: ClassMapper,
         losses: dict[str, WeightedLoss] | None = None,
         in_channels=3,
-        t_max: int = 50,
+        t_max: int = 37150,
         lr=2e-4,
         **kwargs
     ):
@@ -78,8 +78,7 @@ class ExperimentalModel(pl.LightningModule):
     def forward(self, image):
         # Normalize image
         image = (image - self.mean) / self.std
-        mask = self.model(image)
-        return mask
+        return self.model(image)
     
     def shared_step(self, batch, stage):
         image, mask = batch
@@ -95,29 +94,24 @@ class ExperimentalModel(pl.LightningModule):
         assert mask.ndim == 3, f"Oczekiwano mask.ndim==3, a mamy {mask.ndim}"
 
         # Predict mask logits
-        logits_mask = self.forward(image)
+        logits_mask = self.forward(image).contiguous()
 
         assert (
             logits_mask.shape[1] == len(self.mapper.mapping)
         )  # [batch_size, len(self.mapper), H, W]
 
-        # Ensure the logits mask is contiguous
-        logits_mask = logits_mask.contiguous()
-
         # Compute loss using multi-class Dice loss (pass original mask, not one-hot encoded)
         loss = sum(loss_module(logits_mask, mask) for loss_module in self.losses.values())
-
-
         pred_mask = logits_mask.softmax(dim=1).argmax(dim=1)
-
-        # Compute true positives, false positives, false negatives, and true negatives
         tp, fp, fn, tn = smp.metrics.get_stats(
-            pred_mask, mask, mode="multiclass", num_classes=len(self.mapper.mapping), ignore_index=255
+            pred_mask, mask, mode="multiclass", 
+            num_classes=len(self.mapper.mapping), ignore_index=255
         )
 
-        self.log(name=f"{stage}_loss", value=float(loss), prog_bar=True, logger=True, on_step=False, on_epoch=True)
-        self.log(name=f"{stage}_memory_gpu", value=(torch.cuda.max_memory_allocated() / (1024**3)), prog_bar=True, logger=True, on_step=False, on_epoch=True)
-        self.log(name=f"{stage}_memory_cpu", value=(self.psutil.memory_info().rss / (1024**3)), prog_bar=True, logger=True, on_step=False, on_epoch=True)
+        to_logger = (stage == "val")
+        self.log(name=f"{stage}_loss", value=float(loss), prog_bar=True, logger=to_logger, on_step=False, on_epoch=True)
+        self.log(name=f"{stage}_memory_gpu", value=(torch.cuda.max_memory_allocated() / (1024**3)), prog_bar=True, logger=to_logger, on_step=False, on_epoch=True)
+        self.log(name=f"{stage}_memory_cpu", value=(self.psutil.memory_info().rss / (1024**3)), prog_bar=True, logger=to_logger, on_step=False, on_epoch=True)
 
         return {
             "loss": loss,
@@ -128,60 +122,47 @@ class ExperimentalModel(pl.LightningModule):
         }
     
     def shared_epoch_end(self, outputs, stage: str):
-        # sanity-check
-        if len(outputs) == 0:
+        if not outputs:
             return
+        tp = torch.cat([o['tp'] for o in outputs])
+        fp = torch.cat([o['fp'] for o in outputs])
+        fn = torch.cat([o['fn'] for o in outputs])
+        tn = torch.cat([o['tn'] for o in outputs])
 
-        # batch stats
-        tp = torch.cat([o["tp"] for o in outputs])   #  [N,C]
-        fp = torch.cat([o["fp"] for o in outputs])
-        fn = torch.cat([o["fn"] for o in outputs])
-        tn = torch.cat([o["tn"] for o in outputs])
-
-        # metrics
+        # common metrics
         miou_dataset = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
         miou_image = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
-        acc   = smp.metrics.accuracy( tp, fp, fn, tn, reduction="macro")
-        prec  = smp.metrics.precision(tp, fp, fn, tn, reduction="macro")
-        rec   = smp.metrics.recall(   tp, fp, fn, tn, reduction="macro")
-        f1    = smp.metrics.f1_score( tp, fp, fn, tn, reduction="macro")
-        # fwIoU = smp.metrics.iou_score(tp, fp, fn, tn, reduction="weighted")
+        acc = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
+        prec = smp.metrics.precision(tp, fp, fn, tn, reduction="macro")
+        rec = smp.metrics.recall(tp, fp, fn, tn, reduction="macro")
+        f1 = smp.metrics.f1_score(tp, fp, fn, tn, reduction="macro")
 
-        # per-class metrics
-        per_class_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="none")
-        if per_class_iou.ndim == 2:
-            per_class_iou = per_class_iou.mean(dim=0)
-
-        f1_per_class = smp.metrics.f1_score(tp, fp, fn, tn, reduction="none")
-        if f1_per_class.ndim == 2:
-            f1_per_class = f1_per_class.mean(dim=0)
+        # learning rate always prog_bar
+        lr = self.optimizers().param_groups[0]['lr']
+        main_metrics = {f"{stage}_miou_dataset": miou_dataset, f"{stage}_miou_image": miou_image, "lr": lr}
+        extra_metrics = {f"{stage}_acc_macro": acc, f"{stage}_prec_macro": prec,
+                         f"{stage}_rec_macro": rec, f"{stage}_f1_macro": f1}
 
         if stage == "val":
+            # per-class
+            per_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="none")
+            if per_iou.ndim == 2: per_iou = per_iou.mean(0)
+            per_f1 = smp.metrics.f1_score(tp, fp, fn, tn, reduction="none")
+            if per_f1.ndim == 2: per_f1 = per_f1.mean(0)
             class_metrics = {}
-            for idx, (iou_val, f1_val) in enumerate(zip(per_class_iou, f1_per_class)):
-                entry = self.mapper.mapping.get(idx, (idx, f"class_{idx}", None))
-                _, class_name, _ = entry
-                class_metrics[f"iou_{class_name}"] = iou_val.item()
-                class_metrics[f"f1_{class_name}"] = f1_val.item()
+            for idx, (iou_v, f1_v) in enumerate(zip(per_iou, per_f1)):
+                _, name, _ = self.mapper.mapping.get(idx, (idx, f"class_{idx}", None))
+                class_metrics[f"iou_{name}"] = iou_v.item()
+                class_metrics[f"f1_{name}"] = f1_v.item()
+            # log all val metrics
+            self.log_dict(main_metrics, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+            self.log_dict(extra_metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
             if class_metrics:
-                self.log_dict(dictionary=class_metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
-        
-        # Statystyki do wyświetlenia na progress barze
-        main_metrics = {
-            f"lr": self.optimizers().param_groups[0]['lr'],
-            f"{stage}_miou_dataset": miou_dataset.detach(),
-            f"{stage}_miou_image": miou_image.detach()
-        }
-
-        metrics = {
-            f"{stage}_acc_macro": acc.detach(),
-            f"{stage}_prec_macro": prec.detach(),
-            f"{stage}_rec_macro": rec.detach(),
-            f"{stage}_f1_macro": f1.detach()
-        }
-
-        self.log_dict(dictionary=main_metrics, prog_bar=True, logger=True, on_step=False, on_epoch=True)
-        self.log_dict(dictionary=metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
+                self.log_dict(class_metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
+        else:
+            # only show train metrics in progress bar, no CSV logging
+            self.log_dict(main_metrics, prog_bar=True, logger=False, on_step=False, on_epoch=True)
+            self.log_dict(extra_metrics, prog_bar=False, logger=False, on_step=False, on_epoch=True)
 
     def training_step(self, batch, batch_idx):
         out = self.shared_step(batch, "train")
