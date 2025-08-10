@@ -130,7 +130,8 @@ class ExperimentalModel(pl.LightningModule):
         tn = torch.cat([o['tn'] for o in outputs])
 
         # common metrics
-        miou_dataset = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
+        miou_dataset = smp.metrics.iou_score(tp, fp, fn, tn, reduction="macro")
+        miou_dataset_micro = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
         miou_image = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
         acc = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
         prec = smp.metrics.precision(tp, fp, fn, tn, reduction="macro")
@@ -139,16 +140,19 @@ class ExperimentalModel(pl.LightningModule):
 
         # learning rate always prog_bar
         lr = self.optimizers().param_groups[0]['lr']
-        main_metrics = {f"{stage}_miou_dataset": miou_dataset, f"{stage}_miou_image": miou_image, "lr": lr}
+        main_metrics = {f"{stage}_miou_dataset": miou_dataset, f"{stage}_miou_dataset_micro": miou_dataset_micro, f"{stage}_miou_image": miou_image, "lr": lr}
         extra_metrics = {f"{stage}_acc_macro": acc, f"{stage}_prec_macro": prec,
                          f"{stage}_rec_macro": rec, f"{stage}_f1_macro": f1}
 
         if stage == "val":
             # per-class
-            per_iou = smp.metrics.iou_score(tp, fp, fn, tn, reduction="none")
-            if per_iou.ndim == 2: per_iou = per_iou.mean(0)
-            per_f1 = smp.metrics.f1_score(tp, fp, fn, tn, reduction="none")
-            if per_f1.ndim == 2: per_f1 = per_f1.mean(0)
+            tp_c = tp.sum(0)
+            fp_c = fp.sum(0)
+            fn_c = fn.sum(0)
+            per_iou = smp.metrics.iou_score(tp_c, fp_c, fn_c,
+                                            tn=None, reduction="none")
+            per_f1  = smp.metrics.f1_score(tp_c, fp_c, fn_c,
+                                        tn=None, reduction="none")
             class_metrics = {}
             for idx, (iou_v, f1_v) in enumerate(zip(per_iou, per_f1)):
                 _, name, _ = self.mapper.mapping.get(idx, (idx, f"class_{idx}", None))

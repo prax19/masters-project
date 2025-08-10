@@ -16,6 +16,7 @@ class ClassMapper:
             self, 
             dataset_class, 
             train_transforms,
+            val_transforms,
             infer_transforms,
             reduced_subset: bool = False
         ):
@@ -24,6 +25,7 @@ class ClassMapper:
         self.dtype_bounds = range(dtype_info.min, dtype_info.max + 1)
 
         self.train_transforms = train_transforms
+        self.val_transforms = val_transforms
         self.infer_transforms = infer_transforms
         self.reduced_subset = reduced_subset
 
@@ -55,6 +57,15 @@ class ClassMapper:
     def wrap_train(self, img, mask):
         trans = A.Compose([
             self.train_transforms,
+            A.Lambda(mask=self.encode_indexes),
+            ToTensorV2()
+        ])
+        aug = trans(image=np.asarray(img), mask=np.asarray(mask))
+        return aug["image"].float() / 255., aug["mask"].long()
+    
+    def wrap_val(self, img, mask):
+        trans = A.Compose([
+            self.val_transforms,
             A.Lambda(mask=self.encode_indexes),
             ToTensorV2()
         ])
