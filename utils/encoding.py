@@ -43,16 +43,13 @@ class ClassMapper:
             for cls in dataset_class.classes
         }
 
-    def encode_indexes(self, mask: np.ndarray, **kwargs) -> np.ndarray:
-        if not self.reduced_subset:
-            return mask
-        out = np.full_like(a=mask, fill_value=255, dtype=self.mapping_dtype)
+        self._id2tid_lut = np.full(256, 255, dtype=np.uint8)
         for orig_id, train_id in self.id2tid.items():
-            if train_id in self.dtype_bounds:
-                out[mask == orig_id] = train_id
-            else:
-                out[mask == orig_id] = 255
-        return out
+            if 0 <= orig_id <= 255:
+                self._id2tid_lut[orig_id] = train_id if (0 <= train_id <= 255) else 255
+
+    def encode_indexes(self, mask: np.ndarray, **kwargs) -> np.ndarray:
+        return self._id2tid_lut[mask]
     
     def wrap_train(self, img, mask):
         trans = A.Compose([

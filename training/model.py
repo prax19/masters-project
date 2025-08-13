@@ -129,8 +129,24 @@ class ExperimentalModel(pl.LightningModule):
         fn = torch.cat([o['fn'] for o in outputs])
         tn = torch.cat([o['tn'] for o in outputs])
 
-        # common metrics
-        miou_dataset = smp.metrics.iou_score(tp, fp, fn, tn, reduction="macro")
+        # --- KLUCZOWA ZMIANA: ignorujemy nieobecne klasy poprzez NaN ---
+        tp_c = tp.sum(0)
+        fp_c = fp.sum(0)
+        fn_c = fn.sum(0)
+
+        present_c = (tp_c + fn_c) > 0  # klasy obecne w GT na całym splicie
+
+        # IoU per klasa (agregacja po całym splicie)
+        per_iou = smp.metrics.iou_score(tp_c, fp_c, fn_c, tn=None, reduction="none")
+        per_iou = per_iou.masked_fill(~present_c, torch.nan)
+
+        # mIoU po klasach (ignoruje NaN => nieobecne klasy nie zaniżają średniej)
+        if torch.any(present_c):
+            miou_dataset = torch.nanmean(per_iou)
+        else:
+            miou_dataset = torch.tensor(0.0, device=tp.device)
+
+        # pozostałe metryki bez zmian
         miou_dataset_micro = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro")
         miou_image = smp.metrics.iou_score(tp, fp, fn, tn, reduction="micro-imagewise")
         acc = smp.metrics.accuracy(tp, fp, fn, tn, reduction="macro")
@@ -145,26 +161,23 @@ class ExperimentalModel(pl.LightningModule):
                          f"{stage}_rec_macro": rec, f"{stage}_f1_macro": f1}
 
         if stage == "val":
-            # per-class
-            tp_c = tp.sum(0)
-            fp_c = fp.sum(0)
-            fn_c = fn.sum(0)
-            per_iou = smp.metrics.iou_score(tp_c, fp_c, fn_c,
-                                            tn=None, reduction="none")
-            per_f1  = smp.metrics.f1_score(tp_c, fp_c, fn_c,
-                                        tn=None, reduction="none")
+            # per-class (logujemy NaN dla nieobecnych klas zamiast 0)
+            per_f1  = smp.metrics.f1_score(tp_c, fp_c, fn_c, tn=None, reduction="none")
+            per_f1  = per_f1.masked_fill(~present_c, torch.nan)
+
             class_metrics = {}
-            for idx, (iou_v, f1_v) in enumerate(zip(per_iou, per_f1)):
+            for idx, (iou_v, f1_v, present_v) in enumerate(zip(per_iou, per_f1, present_c)):
                 _, name, _ = self.mapper.mapping.get(idx, (idx, f"class_{idx}", None))
-                class_metrics[f"iou_{name}"] = iou_v.item()
-                class_metrics[f"f1_{name}"] = f1_v.item()
+                class_metrics[f"iou_{name}"] = (iou_v.item() if present_v else float("nan"))
+                class_metrics[f"f1_{name}"]  = (f1_v.item()  if present_v else float("nan"))
+
             # log all val metrics
             self.log_dict(main_metrics, prog_bar=True, logger=True, on_step=False, on_epoch=True)
             self.log_dict(extra_metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
             if class_metrics:
                 self.log_dict(class_metrics, prog_bar=False, logger=True, on_step=False, on_epoch=True)
         else:
-            # only show train metrics in progress bar, no CSV logging
+            # only show train/test metrics in progress bar, no CSV logging
             self.log_dict(main_metrics, prog_bar=True, logger=False, on_step=False, on_epoch=True)
             self.log_dict(extra_metrics, prog_bar=False, logger=False, on_step=False, on_epoch=True)
 

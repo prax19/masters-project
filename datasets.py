@@ -23,7 +23,7 @@ class A2D2Dataset(VisionDataset):
     )
 
     # Based on original A2D2 dataset https://www.a2d2.audi/en/dataset/
-    classes = [
+    _classes = [
         A2D2DatasetClass(name='Unlabeled', id=55, train_id=255, color=(0, 0, 0)),
         A2D2DatasetClass(name='Car 1', id=0, train_id=0, color=(255, 0, 0)),
         A2D2DatasetClass(name='Car 2', id=1, train_id=0, color=(200, 0, 0)),
@@ -78,6 +78,87 @@ class A2D2Dataset(VisionDataset):
         A2D2DatasetClass(name='RD normal street', id=50, train_id=28, color=(255, 0, 255)),
         A2D2DatasetClass(name='Sky',id=51, train_id=29, color=(135, 206, 255)),
         A2D2DatasetClass(name='Buildings', id=52, train_id=30, color=(241, 230, 255)),
+        A2D2DatasetClass(name='Blurred area', id=53, train_id=255, color=(96, 69, 143)),
+        A2D2DatasetClass(name='Rain dirt', id=54, train_id=255, color=(53, 46, 82))
+    ]
+
+    classes = [
+        A2D2DatasetClass(name='Unlabeled', id=55, train_id=255, color=(0, 0, 0)),
+
+        A2D2DatasetClass(name='RD normal street', id=50, train_id=0, color=(255, 0, 255)),      # → road
+        A2D2DatasetClass(name='RD restricted area', id=36, train_id=0, color=(150, 0, 150)),    # → road
+        A2D2DatasetClass(name='Drivable cobblestone', id=40, train_id=0, color=(180, 50, 180)), # → road
+        A2D2DatasetClass(name='Slow drive area', id=42, train_id=0, color=(238, 233, 191)),     # → road
+        A2D2DatasetClass(name='Solid line', id=28, train_id=0, color=(255, 193, 37)),      # → road
+        A2D2DatasetClass(name='Dashed line', id=49, train_id=0, color=(128, 0, 255)),           # → road
+        A2D2DatasetClass(name='Painted driv. instr.', id=47, train_id=0, color=(200, 125, 210)),# → road
+
+        A2D2DatasetClass(name='Sidewalk', id=45, train_id=1, color=(180, 150, 200)),
+        A2D2DatasetClass(name='Curbstone', id=27, train_id=1, color=(128, 128, 0)),        # → sidewalk
+
+        A2D2DatasetClass(name='Buildings', id=52, train_id=2, color=(241, 230, 255)),
+
+        A2D2DatasetClass(name='Road blocks', id=30, train_id=3, color=(185, 122, 87)),     # → wall
+
+        A2D2DatasetClass(name='Grid structure', id=38, train_id=4, color=(238, 162, 173)),      # → fence
+
+        A2D2DatasetClass(name='Poles', id=35, train_id=5, color=(255, 246, 143)),               # → pole
+        A2D2DatasetClass(name='Sidebars', id=25, train_id=5, color=(233, 100, 0)),         # → słupki
+
+        A2D2DatasetClass(name='Traffic signal 1', id=17, train_id=6, color=(0, 128, 255)),
+        A2D2DatasetClass(name='Traffic signal 2', id=18, train_id=255, color=(30, 28, 158)),
+        A2D2DatasetClass(name='Traffic signal 3', id=19, train_id=255, color=(60, 28, 100)),
+        A2D2DatasetClass(name='Signal corpus', id=39, train_id=6, color=(33, 44, 177)),         # → traffic light (obudowa)
+
+        A2D2DatasetClass(name='Traffic sign 1', id=20, train_id=7, color=(0, 255, 255)),
+        A2D2DatasetClass(name='Traffic sign 2', id=21, train_id=7, color=(30, 220, 220)),
+        A2D2DatasetClass(name='Traffic sign 3', id=22, train_id=255, color=(60, 157, 199)),
+        A2D2DatasetClass(name='Electronic traffic', id=41, train_id=7, color=(255, 70, 185)),   # → traffic sign (tablice VMS)
+
+        A2D2DatasetClass(name='Nature object', id=43, train_id=8, color=(147, 253, 194)),       # → vegetation
+
+        A2D2DatasetClass(name='Non-drivable street', id=32, train_id=9, color=(139, 99, 108)),  # → terrain
+
+        A2D2DatasetClass(name='Sky', id=51, train_id=10, color=(135, 206, 255)),
+
+        A2D2DatasetClass(name='Pedestrian 1', id=8, train_id=11, color=(204, 153, 255)),
+        A2D2DatasetClass(name='Pedestrian 2', id=9, train_id=11, color=(189, 73, 155)),
+        A2D2DatasetClass(name='Pedestrian 3', id=10, train_id=255, color=(239, 89, 191)),
+
+        # rider
+
+        A2D2DatasetClass(name='Car 1', id=0, train_id=12, color=(255, 0, 0)),
+        A2D2DatasetClass(name='Car 2', id=1, train_id=12, color=(200, 0, 0)),
+        A2D2DatasetClass(name='Car 3', id=2, train_id=12, color=(150, 0, 0)),
+        A2D2DatasetClass(name='Car 4', id=3, train_id=255, color=(128, 0, 0)),
+
+        A2D2DatasetClass(name='Truck 1', id=11, train_id=13, color=(255, 128, 0)),
+        A2D2DatasetClass(name='Truck 2', id=12, train_id=13, color=(200, 128, 0)),
+        A2D2DatasetClass(name='Truck 3', id=13, train_id=13, color=(150, 128, 0)),
+        A2D2DatasetClass(name='Utility vehicle 1', id=23, train_id=13, color=(255, 255, 0)),  # → truck
+        A2D2DatasetClass(name='Utility vehicle 2', id=24, train_id=13, color=(255, 255, 200)),
+
+        # caravan
+        # train
+
+        A2D2DatasetClass(name='Small vehicles 1', id=14, train_id=14, color=(0, 255, 0)),  # → motorcycle
+        A2D2DatasetClass(name='Small vehicles 2', id=15, train_id=14, color=(0, 200, 0)),
+        A2D2DatasetClass(name='Small vehicles 3', id=16, train_id=14, color=(0, 150, 0)),
+
+        A2D2DatasetClass(name='Bicycle 1', id=4, train_id=15, color=(182, 89, 6)),
+        A2D2DatasetClass(name='Bicycle 2', id=5, train_id=15, color=(150, 50, 4)),
+        A2D2DatasetClass(name='Bicycle 3', id=6, train_id=15, color=(90, 30, 1)),
+        A2D2DatasetClass(name='Bicycle 4', id=7, train_id=255, color=(90, 30, 30)),
+
+        A2D2DatasetClass(name='Speed bumper', id=255, train_id=255, color=(110, 110, 0)),
+        A2D2DatasetClass(name='Irrelevant signs', id=29, train_id=255, color=(64, 0, 64)),   # ignore
+        A2D2DatasetClass(name='Tractor', id=31, train_id=255, color=(0, 0, 100)),
+        A2D2DatasetClass(name='Zebra crossing', id=33, train_id=255, color=(210, 50, 115)),
+        A2D2DatasetClass(name='Obstacles / trash', id=34, train_id=255, color=(255, 0, 128)),   # → ignore
+        A2D2DatasetClass(name='Animals', id=37, train_id=255, color=(204, 255, 153)),
+        A2D2DatasetClass(name='Parking area', id=44, train_id=255, color=(150, 150, 200)),      # ignore
+        A2D2DatasetClass(name='Ego car', id=46, train_id=255, color=(72, 209, 204)),
+        A2D2DatasetClass(name='Traffic guide obj.', id=48, train_id=255, color=(159, 121, 238)),# → ignore
         A2D2DatasetClass(name='Blurred area', id=53, train_id=255, color=(96, 69, 143)),
         A2D2DatasetClass(name='Rain dirt', id=54, train_id=255, color=(53, 46, 82))
     ]
@@ -138,12 +219,12 @@ class A2D2Dataset(VisionDataset):
         trg_pil = Image.open(self.targets[idx])
 
         # Przetwarzanie PIL‐owej maski lbl_geo na NumPy, zmiana kolorów
-        lbl_np = np.array(trg_pil, dtype=np.uint8)
-        r = lbl_np[..., 0].astype(np.int32)
-        g = lbl_np[..., 1].astype(np.int32)
-        b = lbl_np[..., 2].astype(np.int32)
-        idxs = (r * 256 * 256) + (g * 256) + b
-        mask = torch.from_numpy(self._lut[idxs]).long()
+        lbl = np.array(trg_pil, dtype=np.uint8)
+        r = lbl[..., 0].astype(np.uint32)
+        g = lbl[..., 1].astype(np.uint32)
+        b = lbl[..., 2].astype(np.uint32)
+        idxs = (r << 16) | (g << 8) | b
+        mask = self._lut[idxs].astype(np.uint8)
 
         if self.transforms is not None:
             image, target = self.transforms(img_pil, mask)
