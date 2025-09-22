@@ -5,6 +5,7 @@ logs
 pyrightconfig.json
 .lr_find_*.ckpt
 .vscode
+images
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
