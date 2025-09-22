@@ -1,7 +1,7 @@
 import albumentations as  A
 import cv2
 
-SIZE_DIVISOR: int = 16
+SIZE_DIVISOR: int = 32
 
 train_transforms = A.Compose([
     A.HorizontalFlip(p=0.5),
