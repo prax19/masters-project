@@ -6,9 +6,6 @@ Projekt skupia się wokół zastosowania technik uczenia głębokiego w treningu
 
 Projekt w głównej mierze opiera się na bibliotece [segmentation_models.pytorch](https://github.com/qubvel-org/segmentation_models.pytorch/tree/main), która dostarcza sprawne implementacje różnych *funkcji strat*, *metryk*, ale również *enkoderów* oraz pełnych *architektur modeli*. Do eliminacji *boilerplateu* wkorzystano bibliotekę [pytorch-lightning](https://github.com/Lightning-AI/pytorch-lightning), a augmentacje realizowane są z wykorzystaniem biblioteki [Albumentations](https://github.com/albumentations-team/albumentations), która stanowi standard w branży. Zastosowanie niniejszych biliotek pozywtywnie wpłynęło na wydajność uczenia sieci w stosunku do ręcznych implementacji oraz standardowych rozwiązań biblioteki `torchvision`.
 
-## Porównywane architektury
-- [**resnet50**](https://docs.pytorch.org/vision/main/models/generated/torchvision.models.resnet50.html) ze wstępnie wytrenowanymi wagami.
-
 ## Testowane zbiory danych
 - [**A2D2**](https://www.a2d2.audi/en/) - zbiór danych grupy VAG, składający się z wielu scen uchwyconych w niemieckich miastach. W skład zbioru wchodzą obrazy `.png` z wielu kamer w rozdzielczości *1920x1208*, dane z *magistrali CAN* oraz *LIDARu*.
 - [**Cityscapes**](https://www.cityscapes-dataset.com/) - bardzo popularny zbiór danych w rozważaniu problemu segmentacji, uchwycony na terenie wielu niemieckich miast. Zbiór ten charakteryzuje się bardzo dużą różnorodnością oraz nieco zredukowaną ilością klas (nie obsługuje między innymi oznaczeń poziomych na drodze).
